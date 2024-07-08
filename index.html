@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Webcam to ASCII Art</title>
+    <style>
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #000;
+        color: #fff;
+        font-family: monospace;
+        overflow: hidden;
+        margin: 0;
+      }
+      #asciiArt {
+        white-space: pre;
+        line-height: 0.75;
+      }
+      #sliderContainer {
+        position: absolute;
+        bottom: 20px;
+        width: 80%;
+        text-align: center;
+      }
+      #scaleSlider {
+        width: 100%;
+      }
+      #inverseCheckbox {
+        margin-left: 20px;
+        color: white;
+      }
+      #colorCheckbox {
+        margin-left: 20px;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="asciiArt"></div>
+    <div id="sliderContainer">
+      Scale: <span id="scaleValue">0.15</span>
+      <input
+        type="range"
+        id="scaleSlider"
+        min="0.1"
+        max="1.1"
+        step="0.05"
+        value="0.15"
+      />
+      <label id="inverseCheckbox">
+        <input type="checkbox" id="inverseToggle" /> Invert</label
+      >
+      <label id="colorCheckbox">
+        <input type="checkbox" id="colorToggle" /> Color (warning: slow!)</label
+      >
+    </div>
+    <script>
+      const video = document.createElement("video");
+      const asciiArtElement = document.getElementById("asciiArt");
+      const scaleSlider = document.getElementById("scaleSlider");
+      const scaleValueElement = document.getElementById("scaleValue");
+      const inverseToggle = document.getElementById("inverseToggle");
+      const colorToggle = document.getElementById("colorToggle");
+      let scale = parseFloat(scaleSlider.value);
+      const contrast = 2;
+      let invert = !inverseToggle.checked;
+      let color = !colorToggle.checked;
+      const chars = ["@", "%", "&", "$", "#", "+", "=", "-", ":", ".", " "];
+      const charsReversed = [
+        " ",
+        ".",
+        ":",
+        "-",
+        "+",
+        "=",
+        "+",
+        "#",
+        "&",
+        "%",
+        "@",
+      ];
+
+      async function setupCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
+        video.srcObject = stream;
+        return new Promise((resolve) => {
+          video.onloadedmetadata = () => {
+            resolve(video);
+          };
+        });
+      }
+
+      function toAsciiArt(frame) {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        const width = frame.videoWidth * scale;
+        const height = frame.videoHeight * scale;
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(frame, 0, 0, width, height);
+        const imageData = context.getImageData(0, 0, width, height);
+        const pixels = imageData.data;
+        let asciiArt = "";
+
+        for (let y = 0; y < height; y++) {
+          let row = "";
+          for (let x = 0; x < width; x++) {
+            const index = (y * width + x) * 4;
+            const r = pixels[index];
+            const g = pixels[index + 1];
+            const b = pixels[index + 2];
+            const avg = ((r + g + b) / 3) * contrast;
+            const charIndex = Math.floor(avg / (25 * contrast));
+            let char = 0;
+            if (!invert) {
+              char = charsReversed[charIndex] + charsReversed[charIndex];
+            } else {
+              char = chars[charIndex] + chars[charIndex];
+            }
+            if (color) {
+              row += `<span style="color: rgb(${r},${g},${b})">${char}</span>`;
+            } else {
+              row += char;
+            }
+          }
+          asciiArt += row + "\n";
+        }
+        return asciiArt;
+      }
+
+      function calculateFontSize() {
+        const { clientWidth, clientHeight } = document.documentElement;
+        const asciiArtWidth = Math.floor(video.videoWidth * scale) * 2; // Multiply by 2 because each character represents two columns
+        const asciiArtHeight = Math.floor(video.videoHeight * scale);
+        const fontSize = Math.min(
+          clientWidth / asciiArtWidth,
+          clientHeight / asciiArtHeight
+        );
+        return fontSize;
+      }
+
+      async function render() {
+        await setupCamera();
+        video.play();
+
+        const captureFrame = () => {
+          scale = parseFloat(scaleSlider.value);
+          scaleValueElement.textContent = scale.toFixed(2);
+          invert = inverseToggle.checked;
+          color = colorToggle.checked;
+          const asciiArt = toAsciiArt(video);
+          //asciiArtElement.textContent = asciiArt;
+          asciiArtElement.innerHTML = asciiArt;
+          const fontSize = calculateFontSize();
+          asciiArtElement.style.fontSize = `${fontSize}px`;
+          requestAnimationFrame(captureFrame);
+        };
+        captureFrame();
+      }
+
+      scaleSlider.addEventListener("input", () => {
+        scale = parseFloat(scaleSlider.value);
+        scaleValueElement.textContent = scale.toFixed(2);
+        console.log("Adjusting scale to " + scale);
+      });
+
+      inverseToggle.addEventListener("change", () => {
+        invert = inverseToggle.checked;
+        console.log("Inverting..." + color);
+      });
+
+      colorCheckbox.addEventListener("change", () => {
+        color = colorToggle.checked;
+        console.log("Color changing..." + invert);
+      });
+
+      render();
+    </script>
+  </body>
+</html>
